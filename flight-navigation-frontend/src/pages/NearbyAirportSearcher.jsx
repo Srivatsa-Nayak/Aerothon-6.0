@@ -1,100 +1,87 @@
 // NearbyAirportSearcher.jsx
 import React, { useState } from "react";
 import axios from "axios";
+import { API_URL } from "@/lib/api";
 
-function NearbyAirportSearcher({ setNearbyRoute }) { 
-  const [longitude, setLongitude] = useState("");
-  const [latitude, setLatitude] = useState("");
-  const [radius, setRadius] = useState("");
+function NearbyAirportSearcher({ setNearbyRoute, destinationIataCode, defaultPosition, onFound }) {
+  const [latitude, setLatitude] = useState(defaultPosition ? String(defaultPosition[0]) : "");
+  const [longitude, setLongitude] = useState(defaultPosition ? String(defaultPosition[1]) : "");
+  const [radius, setRadius] = useState("300");
   const [result, setResult] = useState(null);
-  const [errors, setErrors] = useState({});
-
-  const validateInputs = () => {
-    let errors = {};
-    if (!latitude) {
-      errors.latitude = "Latitude is required.";
-    }
-    if (!longitude) {
-      errors.longitude = "Longitude is required.";
-    }
-    if (!radius) {
-      errors.radius = "Radius is required.";
-    }
-    return errors;
-  };
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    const validationErrors = validateInputs();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
+    if (!latitude || !longitude || !radius) {
+      setError("Enter the aircraft's latitude, longitude and a search radius.");
       return;
     }
-    setErrors({});
+    setError("");
+    setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/get-nearest-airport", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          latitude,
-          longitude,
-          radius,
-          destinationIataCode: "BLR" // Example destination IATA code
-        })
+      const { data } = await axios.post(`${API_URL}/api/get-nearest-airport`, {
+        latitude,
+        longitude,
+        radius,
+        destinationIataCode,
       });
-      const data = await response.json();
-      console.log(result)
-      await axios.post('http://localhost:5000/api/near', data);
-      console.log(data);
+      await axios.post(`${API_URL}/api/near`, data);
 
       setNearbyRoute([
-        [latitude, longitude],
+        [parseFloat(latitude), parseFloat(longitude)],
         [parseFloat(data.nearestAirport.geoCode.latitude), parseFloat(data.nearestAirport.geoCode.longitude)],
       ]);
       setResult(data);
-    } catch (error) {
-      console.error("Error fetching nearby airport:", error);
+    } catch (err) {
+      console.error("Error fetching nearby airport:", err);
+      setError(
+        err.response?.data?.message ||
+          "The airport search service didn't respond. Check the backend is running and its Amadeus key is valid."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
+  const field = "w-full border rounded-sm px-3 py-2 font-display text-lg num focus:outline-none focus:border-chart";
+
   return (
     <div>
-      <form className="flex gap-2 flex-col" onSubmit={handleSearch}>
-        <input
-          type="text"
-          value={latitude}
-          onChange={(e) => setLatitude(e.target.value)}
-          placeholder="Latitude"
-          required
-        />
-        {errors.latitude && <p className="text-red-500">{errors.latitude}</p>}
-        <input
-          type="text"
-          value={longitude}
-          onChange={(e) => setLongitude(e.target.value)}
-          placeholder="Longitude"
-          required
-        />
-        {errors.longitude && <p className="text-red-500">{errors.longitude}</p>}
-        <input
-          type="text"
-          value={radius}
-          onChange={(e) => setRadius(e.target.value)}
-          placeholder="Radius (km)"
-          required
-        />
-        {errors.radius && <p className="text-red-500">{errors.radius}</p>}
-        <button className="text-white rounded p-1 bg-cyan-700" type="submit">Search</button>
+      <p className="text-ink-soft">
+        Search outward from the aircraft&apos;s position. {destinationIataCode} is excluded.
+      </p>
+      <form className="mt-4 grid grid-cols-3 gap-3" onSubmit={handleSearch}>
+        <label className="flex flex-col gap-1">
+          <span className="strip-label">Latitude</span>
+          <input type="text" inputMode="decimal" value={latitude} onChange={(e) => setLatitude(e.target.value)} className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="strip-label">Longitude</span>
+          <input type="text" inputMode="decimal" value={longitude} onChange={(e) => setLongitude(e.target.value)} className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="strip-label">Radius, km</span>
+          <input type="text" inputMode="numeric" value={radius} onChange={(e) => setRadius(e.target.value)} className={field} />
+        </label>
+        <div className="col-span-3">
+          <button className="btn-primary w-full" type="submit" disabled={loading}>
+            {loading ? "Searching…" : "Find nearest airport"}
+          </button>
+        </div>
       </form>
+      {error && <p className="mt-3 text-hold">{error}</p>}
       {result && (
-        <div className="bg-slate-300 rounded p-2 mt-2">
-          <h4 className="font-semibold">Search Result</h4>
-          <p>Nearest Airport: {result.nearestAirport.name}</p>
-          <p>Iata Code: {result.nearestAirport.iataCode}</p>
-          <p>Distance: {result.minDistance} km</p>
+        <div className="mt-4 border-l-4 border-go bg-paper px-4 py-3">
+          <p className="strip-label">Nearest airport</p>
+          <p className="font-display font-semibold text-xl">
+            {result.nearestAirport.iataCode} {result.nearestAirport.name}
+          </p>
+          <p className="num">{result.minDistance} km away</p>
+          <button type="button" className="btn-secondary mt-3" onClick={onFound}>
+            Show on map
+          </button>
         </div>
       )}
     </div>

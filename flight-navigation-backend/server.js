@@ -5,25 +5,70 @@ const cors = require("cors");
 const mysql = require("mysql")
 dotenv.config();
 
+// With MOCK_EXTERNAL_APIS=true, every third-party API call is answered from ./mocks.
+const MOCK_MODE = process.env.MOCK_EXTERNAL_APIS === "true";
+if (MOCK_MODE) {
+  require("./mocks").installMocks(axios);
+  console.log("Mock mode: external APIs are answered with demo data from ./mocks");
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const port = process.env.PORT || 5000;
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '20042002',
-  database: 'airbus'
- 
+// Lets the frontend label simulated data.
+app.get("/api/config", (req, res) => {
+  res.json({ mockMode: MOCK_MODE });
 });
-db.connect((err) => {
+
+const port = process.env.PORT || 5000;
+
+// A pool rather than a single connection: a failed query or a dropped connection
+// only fails that request, instead of emitting a fatal 'error' that kills the process.
+const db = mysql.createPool({
+  connectionLimit: 10,
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 3306,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME || 'airbus'
+});
+db.getConnection((err, connection) => {
   if (err) {
-    console.error('Error connecting to the database:', err);
+    console.error('Error connecting to the database:', err.message);
     return;
   }
+  connection.release();
   console.log('Connected to the database');
 });
+
+const util = require('util');
+
+// Promisify the db.query method
+const query = util.promisify(db.query).bind(db);
+
+// Amadeus access tokens expire after ~30 minutes. With AMADEUS_CLIENT_ID and
+// AMADEUS_CLIENT_SECRET set, fetch and cache one; otherwise fall back to a static AMADEUS_API_KEY.
+let amadeusToken = null;
+let amadeusTokenExpiresAt = 0;
+const getAmadeusToken = async () => {
+  const { AMADEUS_CLIENT_ID, AMADEUS_CLIENT_SECRET, AMADEUS_API_KEY } = process.env;
+  if (!AMADEUS_CLIENT_ID || !AMADEUS_CLIENT_SECRET) return AMADEUS_API_KEY;
+  if (amadeusToken && Date.now() < amadeusTokenExpiresAt) return amadeusToken;
+
+  const response = await axios.post(
+    'https://test.api.amadeus.com/v1/security/oauth2/token',
+    new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: AMADEUS_CLIENT_ID,
+      client_secret: AMADEUS_CLIENT_SECRET,
+    })
+  );
+  amadeusToken = response.data.access_token;
+  // Refresh a minute early
+  amadeusTokenExpiresAt = Date.now() + (response.data.expires_in - 60) * 1000;
+  return amadeusToken;
+};
 
 
 
@@ -165,7 +210,7 @@ app.post("/api/near", async (req, res) => {
       }
 
       // Extract data for all airports from the request body
-      const allAirports = req.body.allAirports;
+      const allAirports = req.body.allAirports || [];
 
       // Insert data for all airports into the NearestAirport table
       const allAirportsInsertQuery = `
@@ -226,17 +271,16 @@ app.post('/api/insertFlightFuel', (req, res) => {
 
 app.get("/api/check-db-connection", async (req, res) => {
   try {
-    const client = await pool.connect();
-    client.release();
+    await query("SELECT 1");
     res.json({
       status: "success",
-      message: "PostgreSQL database connected successfully",
+      message: "MySQL database connected successfully",
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       status: "error",
-      message: "Failed to connect to PostgreSQL database",
+      message: "Failed to connect to MySQL database",
     });
   }
 });
@@ -284,7 +328,12 @@ app.post("/api/getlocation", async (req, res) => {
       factors.lastUpdated
     ];
     
-    await db.query(insertQuery, values);
+    // Logging the reading is best-effort; the weather is still returned if the insert fails.
+    try {
+      await query(insertQuery, values);
+    } catch (dbError) {
+      console.error('Error inserting weather data:', dbError.message);
+    }
     res.status(200).json(factors);
     
    
@@ -366,7 +415,7 @@ app.post("/api/get-nearest-airport", async (req, res) => {
         {
           headers: {
             accept: "application/vnd.amadeus+json",
-            Authorization: `Bearer ${process.env.AMADEUS_API_KEY}`,
+            Authorization: `Bearer ${await getAmadeusToken()}`,
           },
         }
       );
@@ -476,6 +525,10 @@ app.post("/api/get-nearest-airport", async (req, res) => {
     const nearestAirportDetails = validAirports.find(
       (airport) => airport.iataCode === nearestAirport
     );
+    if (!nearestAirportDetails) {
+      res.status(404).json({ status: "error", message: "No airport found in that radius other than the destination. Try a larger radius." });
+      return;
+    }
 
     // Prepare the sorted list of all airports
 
@@ -650,7 +703,7 @@ const fetchAirportData = async (latitude, longitude, radius) => {
       {
         headers: {
           accept: "application/vnd.amadeus+json",
-          Authorization: `Bearer ${process.env.AMADEUS_API_KEY}`,
+          Authorization: `Bearer ${await getAmadeusToken()}`,
         },
       }
     );
@@ -660,11 +713,6 @@ const fetchAirportData = async (latitude, longitude, radius) => {
     return null; // Return null if there's an error
   }
 };
-
-const util = require('util');
-
-// Promisify the db.query method
-const query = util.promisify(db.query).bind(db);
 
 async function getFlyStatus(citiesCovered) {
   try {
@@ -900,7 +948,7 @@ function findShortestPath(graph, startNode, endNode) {
     const minNode = pq.dequeue().element;
     if (minNode === endNode) break;
 
-    graph[minNode].forEach((neighbor) => {
+    (graph[minNode] || []).forEach((neighbor) => {
       if (neighbor.canFly) {
         const alt = distances[minNode] + parseFloat(neighbor.distance);
         if (alt < distances[neighbor.iataCode]) {
@@ -912,8 +960,13 @@ function findShortestPath(graph, startNode, endNode) {
     });
   }
 
+  // Unreachable: no chain of flyable legs leads to the destination
+  if (!Number.isFinite(distances[endNode])) {
+    return { path: [], distance: null };
+  }
+
   const path = [];
-  for (let at = endNode; at !== null; at = prev[at]) {
+  for (let at = endNode; at != null; at = prev[at]) {
     path.push(at);
   }
   path.reverse();
@@ -923,6 +976,7 @@ function findShortestPath(graph, startNode, endNode) {
 
 // Route to fetch and return the airport graphs
 app.post("/api/airport-graphs", async (req, res) => {
+  try {
   const { sourceIataCode, destinationIataCode } = req.body; // Extract source and destination IATA codes from request body
   console.log(req.body);
 
@@ -986,11 +1040,41 @@ app.post("/api/airport-graphs", async (req, res) => {
   // Find the shortest path using Dijkstra's algorithm
   const result = findShortestPath(mergedGraph, sourceIataCode, skipIataCode);
 
+  if (result.path.length === 0) {
+    res.status(404).json({
+      error: "No alternate route",
+      reason: "no_safe_route",
+      message: `No route from ${sourceIataCode} to ${skipIataCode} has every leg within weather limits.`,
+    });
+    return;
+  }
+
   // Send the shortest path and total distance as JSON response
   res.json({
     path: result.path,
     distance: `${result.distance.toFixed(2)}`,
   });
+  } catch (error) {
+    console.error("Error finding alternate route:", error);
+    res.status(500).json({ error: "Error finding alternate route" });
+  }
+});
+
+// Airport name and coordinates by IATA code, proxied so the RapidAPI key stays on the server.
+app.get("/api/airport-info", async (req, res) => {
+  try {
+    const response = await axios.get("https://airport-info.p.rapidapi.com/airport", {
+      params: { iata: req.query.iata },
+      headers: {
+        "X-RapidAPI-Key": process.env.RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "airport-info.p.rapidapi.com",
+      },
+    });
+    res.json(response.data);
+  } catch (error) {
+    console.error("Error fetching airport info:", error.message);
+    res.status(500).json({ error: "Error fetching airport info" });
+  }
 });
 
 
@@ -1122,6 +1206,11 @@ app.post("/api/getFlyStatus", async (req, res) => {
     console.log(error);
     res.status(500).json({ status: "error", message: "Failed to fetch environmental data" });
   }
+});
+
+// Last line of defence: a handler that rejects without its own catch is logged, not fatal.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
 });
 
 app.listen(port, () => {
