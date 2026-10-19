@@ -1,0 +1,55 @@
+# Images default to the public ones on GitHub Container Registry.
+# `tag` falls back to the chart's appVersion when empty.
+
+frontend:
+  image:
+    repository: ghcr.io/srivatsa-nayak/aerothon-frontend
+    tag: ""
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+backend:
+  image:
+    repository: ghcr.io/srivatsa-nayak/aerothon-backend
+    tag: ""
+    pullPolicy: Always
+  replicas: 1
+  # true = weather/airport/fuel APIs answered with built-in demo data; no API keys needed.
+  mockExternalApis: true
+  # Only used when mockExternalApis is false. Stored in a Secret.
+  apiKeys:
+    weatherApiKey: ""
+    amadeusClientId: ""
+    amadeusClientSecret: ""
+    amadeusApiKey: ""
+    rapidApiKey: ""
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+database:
+  image:
+    repository: ghcr.io/srivatsa-nayak/aerothon-db
+    tag: ""
+    pullPolicy: Always
+  name: airbus
+  user: airbus
+  # Empty = a random password is generated on install and kept across upgrades.
+  password: ""
+  persistence:
+    enabled: true
+    size: 1Gi
+    # Empty = the cluster's default StorageClass.
+    storageClass: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# OpenShift Route exposing the frontend over HTTPS.
+route:
+  enabled: true
+  # Empty = OpenShift generates a hostname.
+  host: ""

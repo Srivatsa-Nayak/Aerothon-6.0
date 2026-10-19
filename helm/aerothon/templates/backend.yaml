@@ -1,0 +1,74 @@
+{{- $fullname := include "aerothon.fullname" . -}}
+{{- with .Values.backend }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "aerothon.labels" $ | nindent 4 }}
+    {{- include "aerothon.selector" (list $ "backend") | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      {{- include "aerothon.selector" (list $ "backend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aerothon.selector" (list $ "backend") | nindent 8 }}
+      annotations:
+        # Restart pods when keys or the DB password change.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+    spec:
+      containers:
+        - name: backend
+          image: {{ include "aerothon.image" (list $ .image) }}
+          imagePullPolicy: {{ .image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: PORT
+              value: "5000"
+            - name: MOCK_EXTERNAL_APIS
+              value: {{ .mockExternalApis | quote }}
+            - name: DB_HOST
+              value: {{ $fullname }}-db
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: {{ $.Values.database.name | quote }}
+            - name: DB_USER
+              value: {{ $.Values.database.user | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          readinessProbe:
+            httpGet:
+              path: /api/config
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/config
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-backend
+  labels:
+    {{- include "aerothon.labels" $ | nindent 4 }}
+spec:
+  selector:
+    {{- include "aerothon.selector" (list $ "backend") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+{{- end }}

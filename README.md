@@ -35,3 +35,11 @@ Aerothon-6.0/
    npm install
    npm run dev
    ```
+
+## Containers & OpenShift
+
+Images are published to GitHub Container Registry by `.github/workflows/publish.yml`:
+`ghcr.io/srivatsa-nayak/aerothon-frontend`, `-backend` and `-db` (MySQL with `deployDB.sql` preloaded).
+
+- **Run locally:** `docker compose up --build` → http://localhost:8080
+- **Deploy to OpenShift:** `helm install aerothon oci://ghcr.io/srivatsa-nayak/charts/aerothon` (settings in `helm/aerothon/values.yaml`)

@@ -1,0 +1,4 @@
+# Only the database image is built from the repo root; send it just what it needs.
+*
+!deployDB.sql
+!database/

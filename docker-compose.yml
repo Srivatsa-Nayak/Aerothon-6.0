@@ -1,0 +1,38 @@
+# Local run of the same images that get published: docker compose up --build  ->  http://localhost:8080 (FRONTEND_PORT to change)
+services:
+  db:
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    image: ghcr.io/srivatsa-nayak/aerothon-db:latest
+    environment:
+      MYSQL_USER: airbus
+      MYSQL_PASSWORD: airbus
+      MYSQL_DATABASE: airbus
+    volumes:
+      - db-data:/var/lib/mysql/data
+
+  backend:
+    build: ./flight-navigation-backend
+    image: ghcr.io/srivatsa-nayak/aerothon-backend:latest
+    environment:
+      DB_HOST: db
+      DB_USER: airbus
+      DB_PASSWORD: airbus
+      DB_NAME: airbus
+      MOCK_EXTERNAL_APIS: "true"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./flight-navigation-frontend
+    image: ghcr.io/srivatsa-nayak/aerothon-frontend:latest
+    environment:
+      BACKEND_URL: http://backend:5000
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  db-data:

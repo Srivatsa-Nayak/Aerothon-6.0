@@ -1,0 +1,79 @@
+# Builds the three images and the Helm chart and publishes them to GitHub Container Registry
+# whenever something lands on master: images tagged :latest and :sha-<commit>,
+# chart at Chart.yaml's version.
+name: Publish images and Helm chart
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: aerothon-frontend
+            context: flight-navigation-frontend
+            dockerfile: flight-navigation-frontend/Dockerfile
+          - name: aerothon-backend
+            context: flight-navigation-backend
+            dockerfile: flight-navigation-backend/Dockerfile
+          - name: aerothon-db
+            context: .
+            dockerfile: database/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      # Registry paths must be lowercase; the GitHub username isn't.
+      - run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  chart:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Package chart
+        run: helm package helm/aerothon
+
+      - name: Push chart
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push aerothon-*.tgz "oci://ghcr.io/${OWNER}/charts"

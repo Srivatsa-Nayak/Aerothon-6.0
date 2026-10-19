@@ -1,0 +1,15 @@
+Aerothon is deploying. Watch the pods with:
+
+  oc get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+{{- if .Values.route.enabled }}
+
+Once they're ready, open the app at:
+
+  https://$(oc get route {{ include "aerothon.fullname" . }} -o jsonpath='{.spec.host}')
+{{- end }}
+{{- if .Values.backend.mockExternalApis }}
+
+Mock mode is on: weather and airport data are demo values. Only the South Indian
+airports in the demo data work (e.g. BLR, MAA, IXE, COK, HYD).
+{{- end }}

@@ -1,0 +1,95 @@
+{{- $fullname := include "aerothon.fullname" . -}}
+{{- with .Values.database }}
+{{- if .persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-db
+  labels:
+    {{- include "aerothon.labels" $ | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .persistence.storageClass }}
+  storageClassName: {{ .persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .persistence.size }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-db
+  labels:
+    {{- include "aerothon.labels" $ | nindent 4 }}
+    {{- include "aerothon.selector" (list $ "db") | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  # The volume is ReadWriteOnce: stop the old pod before starting a new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "aerothon.selector" (list $ "db") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aerothon.selector" (list $ "db") | nindent 8 }}
+    spec:
+      containers:
+        - name: mysql
+          image: {{ include "aerothon.image" (list $ .image) }}
+          imagePullPolicy: {{ .image.pullPolicy }}
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              value: {{ .name | quote }}
+            - name: MYSQL_USER
+              value: {{ .user | quote }}
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $fullname }}-secrets
+                  key: DB_PASSWORD
+          readinessProbe:
+            tcpSocket:
+              port: mysql
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: mysql
+            initialDelaySeconds: 120
+            periodSeconds: 20
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql/data
+      volumes:
+        - name: data
+          {{- if .persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-db
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-db
+  labels:
+    {{- include "aerothon.labels" $ | nindent 4 }}
+spec:
+  selector:
+    {{- include "aerothon.selector" (list $ "db") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+{{- end }}
