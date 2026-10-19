@@ -49,7 +49,7 @@ jobs:
             prefix=${{ matrix.component }}-,onlatest=true
           tags: |
             type=raw,value=latest
-            type=sha
+            type=sha,prefix=${{ matrix.component }}-sha-
 
       - uses: docker/build-push-action@v6
         with:
