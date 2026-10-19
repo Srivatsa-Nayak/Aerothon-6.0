@@ -1,21 +1,18 @@
-# Images default to the public ones on GitHub Container Registry.
-# `tag` falls back to the chart's appVersion when empty.
+# All three images live in one public GHCR package, one tag per component:
+# <repository>:frontend-<tag>, :backend-<tag>, :db-<tag>.
+image:
+  repository: ghcr.io/srivatsa-nayak/aerothon
+  # Empty = the chart's appVersion ("latest"). Use e.g. "sha-1a2b3c4" to pin a build.
+  tag: ""
+  pullPolicy: Always
 
 frontend:
-  image:
-    repository: ghcr.io/srivatsa-nayak/aerothon-frontend
-    tag: ""
-    pullPolicy: Always
   replicas: 1
   resources:
     requests: { cpu: 25m, memory: 32Mi }
     limits: { cpu: 200m, memory: 128Mi }
 
 backend:
-  image:
-    repository: ghcr.io/srivatsa-nayak/aerothon-backend
-    tag: ""
-    pullPolicy: Always
   replicas: 1
   # true = weather/airport/fuel APIs answered with built-in demo data; no API keys needed.
   mockExternalApis: true
@@ -31,10 +28,6 @@ backend:
     limits: { cpu: 500m, memory: 256Mi }
 
 database:
-  image:
-    repository: ghcr.io/srivatsa-nayak/aerothon-db
-    tag: ""
-    pullPolicy: Always
   name: airbus
   user: airbus
   # Empty = a random password is generated on install and kept across upgrades.

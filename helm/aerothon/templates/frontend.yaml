@@ -20,8 +20,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: {{ include "aerothon.image" (list $ .image) }}
-          imagePullPolicy: {{ .image.pullPolicy }}
+          image: {{ include "aerothon.image" (list $ "frontend") }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080

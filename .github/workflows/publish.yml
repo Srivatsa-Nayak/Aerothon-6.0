@@ -1,6 +1,7 @@
 # Builds the three images and the Helm chart and publishes them to GitHub Container Registry
-# whenever something lands on master: images tagged :latest and :sha-<commit>,
-# chart at Chart.yaml's version.
+# whenever something lands on master. Everything goes into one package, ghcr.io/<owner>/aerothon:
+#   images: frontend-latest, backend-latest, db-latest (+ <component>-sha-<commit>)
+#   chart:  Chart.yaml's version, e.g. 0.1.0
 name: Publish images and Helm chart
 
 on:
@@ -17,13 +18,13 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: aerothon-frontend
+          - component: frontend
             context: flight-navigation-frontend
             dockerfile: flight-navigation-frontend/Dockerfile
-          - name: aerothon-backend
+          - component: backend
             context: flight-navigation-backend
             dockerfile: flight-navigation-backend/Dockerfile
-          - name: aerothon-db
+          - component: db
             context: .
             dockerfile: database/Dockerfile
     steps:
@@ -43,7 +44,9 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ env.OWNER }}/${{ matrix.name }}
+          images: ghcr.io/${{ env.OWNER }}/aerothon
+          flavor: |
+            prefix=${{ matrix.component }}-,onlatest=true
           tags: |
             type=raw,value=latest
             type=sha
@@ -55,8 +58,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
 
   chart:
     needs: images
@@ -73,7 +76,8 @@ jobs:
       - name: Package chart
         run: helm package helm/aerothon
 
+      # Pushed as ghcr.io/<owner>/aerothon:<chart version>, alongside the images.
       - name: Push chart
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          helm push aerothon-*.tgz "oci://ghcr.io/${OWNER}/charts"
+          helm push aerothon-*.tgz "oci://ghcr.io/${OWNER}"

@@ -20,9 +20,8 @@ app.kubernetes.io/name: {{ index . 1 }}
 app.kubernetes.io/instance: {{ $.Release.Name }}
 {{- end -}}
 
-{{/* Image reference for one component: include "aerothon.image" (list . .Values.backend.image) */}}
+{{/* Image reference for one component: include "aerothon.image" (list . "backend") */}}
 {{- define "aerothon.image" -}}
 {{- $ := index . 0 -}}
-{{- $img := index . 1 -}}
-{{- printf "%s:%s" $img.repository (default $.Chart.AppVersion $img.tag) -}}
+{{- printf "%s:%s-%s" $.Values.image.repository (index . 1) (default $.Chart.AppVersion $.Values.image.tag) -}}
 {{- end -}}

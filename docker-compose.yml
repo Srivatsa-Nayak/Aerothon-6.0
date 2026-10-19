@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: database/Dockerfile
-    image: ghcr.io/srivatsa-nayak/aerothon-db:latest
+    image: ghcr.io/srivatsa-nayak/aerothon:db-latest
     environment:
       MYSQL_USER: airbus
       MYSQL_PASSWORD: airbus
@@ -14,7 +14,7 @@ services:
 
   backend:
     build: ./flight-navigation-backend
-    image: ghcr.io/srivatsa-nayak/aerothon-backend:latest
+    image: ghcr.io/srivatsa-nayak/aerothon:backend-latest
     environment:
       DB_HOST: db
       DB_USER: airbus
@@ -26,7 +26,7 @@ services:
 
   frontend:
     build: ./flight-navigation-frontend
-    image: ghcr.io/srivatsa-nayak/aerothon-frontend:latest
+    image: ghcr.io/srivatsa-nayak/aerothon:frontend-latest
     environment:
       BACKEND_URL: http://backend:5000
     ports:

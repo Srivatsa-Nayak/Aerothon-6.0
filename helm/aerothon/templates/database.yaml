@@ -40,8 +40,8 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: {{ include "aerothon.image" (list $ .image) }}
-          imagePullPolicy: {{ .image.pullPolicy }}
+          image: {{ include "aerothon.image" (list $ "db") }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: mysql
               containerPort: 3306

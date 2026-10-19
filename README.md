@@ -38,8 +38,9 @@ Aerothon-6.0/
 
 ## Containers & OpenShift
 
-Images are published to GitHub Container Registry by `.github/workflows/publish.yml`:
-`ghcr.io/srivatsa-nayak/aerothon-frontend`, `-backend` and `-db` (MySQL with `deployDB.sql` preloaded).
+Every merge to `master` publishes one GitHub Container Registry package, `ghcr.io/srivatsa-nayak/aerothon`
+(`.github/workflows/publish.yml`). It holds the images as tags `frontend-latest`, `backend-latest` and
+`db-latest` (MySQL with `deployDB.sql` preloaded), plus the Helm chart.
 
 - **Run locally:** `docker compose up --build` → http://localhost:8080
-- **Deploy to OpenShift:** `helm install aerothon oci://ghcr.io/srivatsa-nayak/charts/aerothon` (settings in `helm/aerothon/values.yaml`)
+- **Deploy to OpenShift:** `helm install aerothon oci://ghcr.io/srivatsa-nayak/aerothon` (settings in `helm/aerothon/values.yaml`)

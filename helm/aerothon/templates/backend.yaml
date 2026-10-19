@@ -23,8 +23,8 @@ spec:
     spec:
       containers:
         - name: backend
-          image: {{ include "aerothon.image" (list $ .image) }}
-          imagePullPolicy: {{ .image.pullPolicy }}
+          image: {{ include "aerothon.image" (list $ "backend") }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 5000
